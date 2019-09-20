@@ -15,6 +15,7 @@ from torch.distributed.rpc import RpcBackend
 from common_distributed import MultiProcessTestCase
 from common_utils import load_tests, run_tests
 from os import getenv
+import caffe2.python._import_c_extension as C
 
 BACKEND = getenv('RPC_BACKEND', RpcBackend.PROCESS_GROUP)
 RPC_INIT_URL = getenv('RPC_INIT_URL', '')
@@ -79,7 +80,7 @@ def _wrap_with_rpc(func):
         'setUp' and 'tearDown' methods of unittest.
     '''
     def wrapper(self):
-        store = dist.FileStore(self.file.name, self.world_size)
+        store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(backend='gloo', rank=self.rank,
                                 world_size=self.world_size, store=store)
         dist.init_model_parallel(self_name='worker%d' % self.rank,
@@ -96,7 +97,12 @@ def _wrap_with_rpc(func):
     sys.version_info < (3, 0),
     "Pytorch distributed rpc package " "does not support python2",
 )
+@unittest.skipIf(C.is_asan, "Skip ASAN as torch + multiprocessing spawn have known issues")
 class RpcTest(MultiProcessTestCase):
+    def setUp(self):
+        super(RpcTest, self).setUp()
+        self._spawn_process()
+
     @property
     def world_size(self):
         return 4
@@ -142,7 +148,7 @@ class RpcTest(MultiProcessTestCase):
 
     @unittest.skip("Test is flaky, see https://github.com/pytorch/pytorch/issues/25912")
     def test_invalid_names(self):
-        store = dist.FileStore(self.file.name, self.world_size)
+        store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(backend="gloo", rank=self.rank,
                                 world_size=self.world_size, store=store)
 
